@@ -153,8 +153,16 @@ class LLMClient:
     def __init__(self, api_key: str | None = None, base_url: str | None = None,
                  timeout_s: float = config.LLM_TIMEOUT_S,
                  max_retries: int | None = None) -> None:
-        api_key = api_key if api_key else _load_key()[0]
-        base_url = base_url if base_url else _load_key()[1]
+        if api_key:
+            # 调用方已显式给了 key(BYOK:公网访客自填)。此时服务端可能根本没有 .env
+            # (设计如此),绝不能再走 _load_key() —— 它会因"没配默认 key"抛 LLMError。
+            # base_url 从环境读,缺省用官方默认即可。
+            base_url = (base_url or os.getenv("DEEPSEEK_BASE_URL")
+                        or "https://api.deepseek.com").strip()
+        else:
+            # 没给 key → 才从 .env 读默认(没配就抛友好错)。
+            env_key, env_base = _load_key()
+            api_key, base_url = env_key, (base_url or env_base)
         # 每类调用可以单独决定"重试几次":如 AI 出题给足超时但不重试(见 build_plan_auto)
         self._max_retries = config.LLM_MAX_RETRIES if max_retries is None else max_retries
         from openai import OpenAI
