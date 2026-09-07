@@ -1,0 +1,8 @@
+# 项目 2 依赖(镜像项目 1 在这台机器验证过的版本,避免 py3.14 翻车)
+# 安装方式:.venv/Scripts/pip install -r requirements.txt
+# 分两层:核心在 openai+dotenv+pydantic;网页版在 streamlit(先装先验后并入)
+openai==2.53.0           # DeepSeek 走 openai 兼容协议
+python-dotenv==1.2.2     # 读 .env 里的密钥
+pydantic>=2.10           # 结构化输出强 schema(第 4 课;py3.14 wheel 需确认)
+streamlit==1.60.0        # 网页版双入口(项目 1 同款、本机已验证)
+pytest==9.1.1            # 测试
