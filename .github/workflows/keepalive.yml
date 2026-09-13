@@ -1,0 +1,58 @@
+# 保活:定时用无头浏览器"真的打开一次"公网应用,别让 Streamlit 免费档把它睡过去。
+#
+# 为什么不是 curl / UptimeRobot:
+#   休眠时打链接返回 200 OK,但只是一层静态 HTML 外壳,Python 进程没起来 ——
+#   探测显示"正常",应用却在睡。唤醒它必须执行 JS 并建立 WebSocket,所以要真浏览器。
+#
+# 为什么每 6 小时一次:
+#   免费档约 12 小时无活动才休眠,6 小时留了一倍余量,即使 cron 被延迟也睡不过去。
+#   分钟数取 17 而非 0:整点是 GitHub 定时任务最拥堵的时刻,容易被推迟很久。
+#
+# 目标链接从仓库变量 vars.APP_URL 读(不在公开文件里硬编码):
+#   GitHub 仓库页 → Settings → Secrets and variables → Actions → Variables
+#   → New repository variable,Name 填 APP_URL,Value 填 https://xxx.streamlit.app
+#   没设的话脚本会直接报错退出(不会静默失败),顺手把上面这步做了就好。
+
+name: keepalive
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:        # 也可在 Actions 页手动点跑,便于验证
+
+permissions:
+  contents: read
+  actions: write            # 给最后一步「重置 60 天停用计时器」用
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: false # 上一轮没跑完就等着,别叠起来
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 装 Playwright 及其 chromium
+        run: |
+          pip install playwright==1.62.0
+          playwright install --with-deps chromium
+
+      - name: 叫醒应用
+        run: python .github/scripts/wake_streamlit.py
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+
+      # GitHub 会在仓库连续 60 天无提交后静默停用定时工作流(不报错,只发一封容易错过的邮件)。
+      # 重新 enable 一次可重置这个计时器 —— 社区验证过的偏门用法,属本方案最脆弱的一环。
+      - name: 重置 60 天无提交停用计时器
+        if: always()
+        run: gh workflow enable keepalive.yml --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
